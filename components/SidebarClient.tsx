@@ -1,5 +1,7 @@
+// SidebarClient.tsx
 "use client";
 
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { PlusIcon } from "@/components/icons";
@@ -12,8 +14,11 @@ import {
   SidebarMenu,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
-import { useState } from "react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { SidebarUserNav } from "./sidebar-user-nav";
 import { SidebarHistory } from "./sidebar-history";
 
@@ -42,7 +47,11 @@ const initialDummyHistory = [
   },
 ];
 
-export function AppSidebar() {
+interface SidebarClientProps {
+  user: any; // Adjust type as needed
+}
+
+export default function SidebarClient({ user }: SidebarClientProps) {
   const router = useRouter();
   const { setOpenMobile } = useSidebar();
   const [chatHistory, setChatHistory] = useState(initialDummyHistory);
@@ -53,7 +62,7 @@ export function AppSidebar() {
       title: "New Chat - " + new Date().toLocaleDateString(),
       createdAt: new Date(),
       visibility: "public",
-      userId: "user1",
+      userId: user?.id || "unknown",
     };
     setChatHistory((prev) => [newChat, ...prev]);
     router.push(`/chat/${newChat.id}`);
@@ -98,7 +107,7 @@ export function AppSidebar() {
           setChatHistory={setChatHistory}
         />
       </SidebarContent>
-      <SidebarFooter>{/* <SidebarUserNav /> */}</SidebarFooter>
+      <SidebarFooter>{user && <SidebarUserNav user={user} />}</SidebarFooter>
     </Sidebar>
   );
 }

@@ -13,9 +13,7 @@ import React, {
   useState,
   useCallback,
   memo,
-  type Dispatch,
-  type SetStateAction,
-  type ChangeEvent,
+  forwardRef,
 } from "react";
 import { toast } from "sonner";
 import { useLocalStorage, useWindowSize } from "usehooks-ts";
@@ -25,17 +23,18 @@ import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
 import { SuggestedActions } from "./suggested-actions";
 import equal from "fast-deep-equal";
-import { MessageSquareText, Globe, FileSearch2Icon } from "lucide-react";
+import { MessageSquareText, SendHorizontal } from "lucide-react";
+import { Globe } from "lucide-react";
+import { FileSearch2Icon } from "lucide-react";
+import { Paperclip } from "lucide-react";
 import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
   TooltipProvider,
 } from "@/components/ui/tooltip";
-import { LegislationSearchDrawer } from "./MessageInput/LegislationSearchDrawer";
 
-// -------------------------------------
-// AttachmentPreview Component (unchanged)
+// Presentational component for attachment preview
 function AttachmentPreview({
   attachment,
   onRemove,
@@ -78,34 +77,37 @@ function AttachmentPreview({
   );
 }
 
-// -------------------------------------
-// Upload Button Component (unchanged behavior)
-// Note: This one is not wrapped with asChild, so we simply wrap it later.
-function PureAttachmentsButton({
-  fileInputRef,
-  isLoading,
-}: {
-  fileInputRef: React.MutableRefObject<HTMLInputElement | null>;
-  isLoading: boolean;
-}) {
+// Updated AttachmentsButton with ref forwarding and without event.preventDefault()
+function PureAttachmentsButton(
+  {
+    fileInputRef,
+    isLoading,
+    ...props
+  }: {
+    fileInputRef: React.MutableRefObject<HTMLInputElement | null>;
+    isLoading: boolean;
+  },
+  ref: React.Ref<HTMLButtonElement>
+) {
   return (
     <Button
+      ref={ref}
+      type="button"
       className="rounded-md rounded-bl-lg p-[7px] h-fit dark:border-zinc-700 hover:dark:bg-zinc-900 hover:bg-zinc-200"
-      onClick={(event) => {
-        event?.preventDefault();
+      onClick={() => {
         fileInputRef.current?.click();
       }}
       disabled={isLoading}
       variant="ghost"
+      {...props}
     >
       <PaperclipIcon size={14} />
     </Button>
   );
 }
 
-const AttachmentsButton = memo(PureAttachmentsButton);
+const AttachmentsButton = forwardRef(PureAttachmentsButton);
 
-// -------------------------------------
 // Main Multimodal Input Component
 function PureMultimodalInput({
   chatId,
@@ -127,9 +129,9 @@ function PureMultimodalInput({
   isLoading: boolean;
   stop: () => void;
   attachments: Array<Attachment>;
-  setAttachments: Dispatch<SetStateAction<Array<Attachment>>>;
+  setAttachments: React.Dispatch<React.SetStateAction<Array<Attachment>>>;
   messages: Array<Message>;
-  setMessages: Dispatch<SetStateAction<Array<Message>>>;
+  setMessages: React.Dispatch<React.SetStateAction<Array<Message>>>;
   append: (
     message: Message | CreateMessage,
     chatRequestOptions?: ChatRequestOptions
@@ -234,7 +236,7 @@ function PureMultimodalInput({
   ]);
 
   const handleFileChange = useCallback(
-    async (event: ChangeEvent<HTMLInputElement>) => {
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(event.target.files || []);
       setUploadQueue(files.map((file) => file.name));
 
@@ -243,6 +245,11 @@ function PureMultimodalInput({
         const uploadedAttachments = await Promise.all(uploadPromises);
         const successfullyUploadedAttachments = uploadedAttachments.filter(
           (attachment) => attachment !== undefined
+        );
+
+        console.log(
+          "successfullyUploadedAttachments",
+          successfullyUploadedAttachments
         );
 
         setAttachments((currentAttachments) => [
@@ -328,16 +335,14 @@ function PureMultimodalInput({
       />
 
       <TooltipProvider>
-        <div className="absolute bottom-0 p-2 w-fit flex flex-row justify-start items-center">
+        <div className="absolute bottom-0 p-1 w-fit flex flex-row justify-start items-center">
           {/* Upload Documents */}
           <Tooltip>
-            <TooltipTrigger>
-              <span className="inline-block">
-                <AttachmentsButton
-                  fileInputRef={fileInputRef}
-                  isLoading={isLoading}
-                />
-              </span>
+            <TooltipTrigger asChild>
+              <AttachmentsButton
+                fileInputRef={fileInputRef}
+                isLoading={isLoading}
+              />
             </TooltipTrigger>
             <TooltipContent>
               <p>Upload Documents</p>
@@ -347,35 +352,45 @@ function PureMultimodalInput({
           {/* Prompt Templates */}
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="inline-block">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="rounded-md rounded-bl-lg h-fit p-[7px] dark:border-zinc-700 hover:dark:bg-zinc-900 hover:bg-zinc-200"
-                >
-                  <MessageSquareText className="h-5 w-5" />
-                </Button>
-              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-md rounded-bl-lg h-fit p-[7px] dark:border-zinc-700 hover:dark:bg-zinc-900 hover:bg-zinc-200"
+              >
+                <MessageSquareText className="h-5 w-5" />
+              </Button>
             </TooltipTrigger>
             <TooltipContent>
               <p>Prompt Templates</p>
             </TooltipContent>
           </Tooltip>
 
-          <LegislationSearchDrawer />
+          {/* Legislation Search */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-md rounded-bl-lg h-fit p-[7px] dark:border-zinc-700 hover:dark:bg-zinc-900 hover:bg-zinc-200"
+              >
+                <FileSearch2Icon className="h-5 w-5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Legislation Search</p>
+            </TooltipContent>
+          </Tooltip>
 
           {/* Internet Search */}
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="inline-block">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="rounded-md rounded-bl-lg h-fit p-[7px] dark:border-zinc-700 hover:dark:bg-zinc-900 hover:bg-zinc-200"
-                >
-                  <Globe className="h-5 w-5" />
-                </Button>
-              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-md rounded-bl-lg h-fit p-[7px] dark:border-zinc-700 hover:dark:bg-zinc-900 hover:bg-zinc-200"
+              >
+                <Globe className="h-5 w-5" />
+              </Button>
             </TooltipTrigger>
             <TooltipContent>
               <p>Internet Search</p>
@@ -409,14 +424,13 @@ export const MultimodalInput = memo(
   }
 );
 
-// -------------------------------------
-// StopButton Component
+// StopButton component
 function PureStopButton({
   stop,
   setMessages,
 }: {
   stop: () => void;
-  setMessages: Dispatch<SetStateAction<Array<Message>>>;
+  setMessages: React.Dispatch<React.SetStateAction<Array<Message>>>;
 }) {
   return (
     <Button
@@ -433,8 +447,7 @@ function PureStopButton({
 }
 const StopButton = memo(PureStopButton);
 
-// -------------------------------------
-// SendButton Component
+// SendButton component
 function PureSendButton({
   submitForm,
   input,

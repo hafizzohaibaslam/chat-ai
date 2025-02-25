@@ -1,11 +1,11 @@
 "use client";
 
 import type { Attachment, Message, CreateMessage } from "ai";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ChatHeader } from "@/components/chat-header";
 import { generateUUID } from "@/lib/utils";
 import { toast } from "sonner";
-
+import { useChatWebSocket } from "@/hooks/useChatWebSocket";
 import { MultimodalInput } from "./multimodal-input";
 import { Messages } from "./messages";
 
@@ -16,130 +16,86 @@ export function Chat({
   isReadonly,
 }: {
   id: string;
-  initialMessages: Array<Message>;
+  initialMessages: Message[];
   selectedChatModel: string;
   isReadonly: boolean;
 }) {
-  // Local state for messages, input, and loading status
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  // WebSocket Hook for real-time messages
+  const { messages, sendMessage, isConnected, isLoading, error } =
+    useChatWebSocket();
+
+  // Local state for input and attachments
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
   const [attachments, setAttachments] = useState<Array<Attachment>>([]);
 
-  // Helper to append a new message to the chat
-  const append = async (
-    message: Message | CreateMessage,
-    chatRequestOptions?: any
-  ): Promise<string | null | undefined> => {
+  // Append messages to local state
+  const appendMessage = async (message: Message | CreateMessage) => {
     if (!message.id) {
       message.id = generateUUID();
     }
-    setMessages((prev) => [...prev, message as Message]);
-    return Promise.resolve(null);
+    sendMessage(message.content, selectedChatModel);
   };
 
-  // Dummy submit handler: adds the user's message and simulates an assistant reply
-  // Note: The event parameter is optional to avoid errors when called without one.
-  const handleSubmit = async (
-    e?: { preventDefault?: () => void },
-    chatRequestOptions?: any
-  ) => {
-    if (e && e.preventDefault) {
-      e.preventDefault();
-    }
+  // Handle message submission
+  const handleSubmit = async (e?: { preventDefault?: () => void }) => {
+    if (e?.preventDefault) e.preventDefault();
     if (!input.trim()) return;
 
-    // Add the user's message
     const userMessage: Message = {
       id: generateUUID(),
       role: "user",
       content: input,
     };
-    append(userMessage);
-    setInput("");
-    setIsLoading(true);
 
-    // Simulate a delay for the assistant's response
-    setTimeout(() => {
-      const assistantMessage: Message = {
-        id: generateUUID(),
-        role: "assistant",
-        content: "This is a dummy assistant response.",
-      };
-      append(assistantMessage);
-      setIsLoading(false);
-    }, 1000);
+    appendMessage(userMessage);
+    setInput(""); // Clear input field after sending
   };
 
-  // Dummy stop function (no operation)
-  const stop = () => {
-    // No operation in dummy mode
-  };
-
-  // Dummy reload function (resets to the initial messages)
-  const reload = async () => {
-    setMessages(initialMessages);
-    return Promise.resolve(null);
-  };
+  // Show toast notifications for WebSocket connection errors
+  useEffect(() => {
+    if (error) {
+      toast.error(`WebSocket Error: ${error}`);
+    }
+  }, [error]);
 
   return (
-    <>
-      <div className="flex flex-col min-w-0 h-dvh bg-background">
-        <ChatHeader
-          chatId={id}
-          selectedModelId={selectedChatModel}
-          isReadonly={isReadonly}
-        />
-
-        <Messages
-          chatId={id}
-          isLoading={isLoading}
-          messages={messages}
-          setMessages={setMessages}
-          reload={reload}
-          isReadonly={isReadonly}
-          votes={[]}
-          isArtifactVisible={false}
-        />
-
-        <form
-          onSubmit={(e) => handleSubmit(e)}
-          className="flex mx-auto px-4 bg-background pb-4 md:pb-6 gap-2 w-full md:max-w-3xl"
-        >
-          {!isReadonly && (
-            <MultimodalInput
-              chatId={id}
-              input={input}
-              setInput={setInput}
-              handleSubmit={handleSubmit}
-              isLoading={isLoading}
-              stop={stop}
-              attachments={attachments}
-              setAttachments={setAttachments}
-              messages={messages}
-              setMessages={setMessages}
-              append={append}
-            />
-          )}
-        </form>
-      </div>
-
-      {/* <Artifact
+    <div className="flex flex-col min-w-0 h-dvh bg-background">
+      {/* Chat Header */}
+      <ChatHeader
         chatId={id}
-        input={input}
-        setInput={setInput}
-        handleSubmit={handleSubmit}
-        isLoading={isLoading}
-        stop={stop}
-        attachments={attachments}
-        setAttachments={setAttachments}
-        append={append}
-        messages={messages}
-        setMessages={setMessages}
-        reload={reload}
-        votes={votes}
+        selectedModelId={selectedChatModel}
         isReadonly={isReadonly}
-      /> */}
-    </>
+      />
+
+      {/* Messages Container */}
+      <Messages
+        chatId={id}
+        isLoading={isLoading}
+        messages={messages}
+        isReadonly={isReadonly}
+      />
+
+      {/* Input Form */}
+      <form
+        onSubmit={handleSubmit}
+        className="flex mx-auto px-4 bg-background pb-4 md:pb-6 gap-2 w-full md:max-w-3xl"
+      >
+        {!isReadonly && (
+          <MultimodalInput
+            chatId={id}
+            input={input}
+            setInput={setInput}
+            handleSubmit={handleSubmit}
+            isLoading={isLoading}
+            stop={() => {}}
+            attachments={attachments}
+            setAttachments={setAttachments}
+            messages={messages}
+            setMessages={() => {}}
+            append={appendMessage}
+          />
+        )}
+      </form>
+    </div>
   );
 }

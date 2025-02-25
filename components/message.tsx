@@ -140,7 +140,7 @@ function PurePreviewMessage({
                       className="px-2 h-fit rounded-full text-muted-foreground"
                       onClick={() => setIsEditMode(true)}
                     >
-                      <PencilEditIcon />
+                      {/* <PencilEditIcon /> */}
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>Edit message</TooltipContent>

@@ -1,9 +1,9 @@
 import { cookies } from "next/headers";
 
-import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 
 import Script from "next/script";
+import AppSidebar from "@/components/AppSidebar.server";
 
 export const experimental_ppr = true;
 
@@ -22,7 +22,7 @@ export default async function Layout({
         strategy="beforeInteractive"
       />
       <SidebarProvider defaultOpen={!isCollapsed}>
-        <AppSidebar />
+        {await AppSidebar()}
         <SidebarInset>{children}</SidebarInset>
       </SidebarProvider>
     </>
