@@ -4,9 +4,19 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Message } from "ai";
 import { getAccessTokenClient } from "@/utils/supabase/token";
 import { useChatContext } from "@/context/chatContext";
+import { API } from "@/lib/axios";
 
 const BASE_WEBSOCKET_URL =
   "wss://law-captain-backend.onrender.com/api/v1/chat/ws/chat";
+const LONG_CONTEXT_API_URL = "chat/long_context_chat";
+
+// Function to calculate total word count in messages
+const getTotalWordCount = (messages: Message[]) => {
+  return messages.reduce(
+    (acc, msg) => acc + msg.content.split(/\s+/).length,
+    0
+  );
+};
 
 export function useChatWebSocket() {
   const ws = useRef<WebSocket | null>(null);
@@ -15,13 +25,15 @@ export function useChatWebSocket() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Grab your model ID from localStorage (if any)
   const savedModelId = localStorage.getItem("selectedModelId");
 
-  // Grab selectedLegislation, selectedJurisdiction from context
-  const { selectedLegislation, selectedJurisdiction } = useChatContext();
+  const {
+    selectedLegislation,
+    selectedJurisdiction,
+    fileUploadResponse,
+    emptyFileUploadResponse,
+  } = useChatContext();
 
-  // Convert selectedLegislation array to a list of URLs
   let legislationUrls: string[] = [];
   if (selectedLegislation) {
     legislationUrls = selectedLegislation.map(
@@ -29,14 +41,13 @@ export function useChatWebSocket() {
     );
   }
 
-  // Establish WebSocket connection once
+  // WebSocket Connection
   useEffect(() => {
     async function connectWebSocket() {
       try {
         const token = await getAccessTokenClient();
         if (!token) throw new Error("No access token available.");
 
-        // Build WS URL with token
         const wsUrl = `${BASE_WEBSOCKET_URL}?token=${encodeURIComponent(
           token
         )}`;
@@ -50,8 +61,6 @@ export function useChatWebSocket() {
 
         ws.current.onmessage = (event) => {
           const response = JSON.parse(event.data);
-
-          // Show the server's response in console for debugging
           console.log("WS onmessage response:", response);
 
           setMessages((prev) => {
@@ -59,7 +68,6 @@ export function useChatWebSocket() {
 
             switch (response.type) {
               case "chunk":
-                // If last message is from the assistant, append
                 if (lastMessage?.role === "assistant") {
                   return [
                     ...prev.slice(0, -1),
@@ -69,7 +77,6 @@ export function useChatWebSocket() {
                     },
                   ];
                 } else {
-                  // Otherwise, create a new assistant message
                   return [
                     ...prev,
                     {
@@ -88,10 +95,6 @@ export function useChatWebSocket() {
                 console.error("❌ WS Error:", response.error);
                 setError(response.error);
                 setIsLoading(false);
-                return prev;
-
-              case "warning":
-                console.warn("⚠️ WS Warning:", response.content);
                 return prev;
 
               default:
@@ -127,42 +130,82 @@ export function useChatWebSocket() {
 
   // Send a new message
   const sendMessage = useCallback(
-    (message: string, modelType: string = "balanced") => {
-      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-        if (!["fast", "balanced", "premium_thinking"].includes(modelType)) {
-          console.error("Invalid model type:", modelType);
-          modelType = "balanced";
+    async (message: string, modelType: string = "balanced") => {
+      if (!["fast", "balanced", "premium_thinking"].includes(modelType)) {
+        console.error("Invalid model type:", modelType);
+        modelType = "balanced";
+      }
+
+      const userMessage: Message = {
+        id: crypto.randomUUID(),
+        role: "user",
+        content: message,
+      };
+      setMessages((prev) => [...prev, userMessage]);
+
+      // Check if total word count exceeds 150,000
+      const totalWordCount = getTotalWordCount([...messages, userMessage]);
+
+      console.log("Total Word Count:", totalWordCount);
+
+      if (totalWordCount > 150000) {
+        console.warn("⚠️ Context too large! Switching to long context API...");
+
+        // Switch to Long Context API
+        try {
+          setIsLoading(true);
+          const response = await API.post(LONG_CONTEXT_API_URL, {
+            messages: messages.map((msg) => ({
+              role: msg.role,
+              content: msg.content,
+            })),
+            model_type: savedModelId || modelType,
+            search_database: true,
+            legislation_urls: legislationUrls,
+            jurisdiction_ids: selectedJurisdiction, // Ensure array
+            file_contents: fileUploadResponse,
+          });
+
+          console.log("✅ Long Context API Response:", response.data);
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              role: "assistant",
+              content: response.data.response.content,
+            },
+          ]);
+          setIsLoading(false);
+          emptyFileUploadResponse();
+        } catch (error) {
+          console.error("❌ Long Context API Error:", error);
+          setError("Failed to process request with Long Context API.");
+          setIsLoading(false);
         }
-
-        // Add the user message to local state
-        const userMessage: Message = {
-          id: crypto.randomUUID(),
-          role: "user",
-          content: message,
-        };
-        setMessages((prev) => [...prev, userMessage]);
-
-        // Prepare the request
-        const request = {
-          messages: [{ role: "user", content: message }],
-          model_type: savedModelId || modelType,
-          search_database: true,
-          selected_legislation: legislationUrls, // array of strings (URLs)
-          selected_jurisdiction: selectedJurisdiction, // single ID or array?
-        };
-
-        // Log the request so you can see what's being sent over WS
-        console.log("Sending request to WebSocket:", request);
-
-        // Send the request
-        ws.current.send(JSON.stringify(request));
-        setIsLoading(true);
       } else {
-        console.error("WebSocket is not connected.");
-        setError("WebSocket is not connected.");
+        // Use WebSocket for normal-sized requests
+        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+          const request = {
+            messages: [{ role: "user", content: message }],
+            model_type: savedModelId || modelType,
+            search_database: true,
+            selected_legislation: legislationUrls,
+            selected_jurisdiction: selectedJurisdiction,
+            file_contents: fileUploadResponse,
+          };
+
+          console.log("Sending request to WebSocket:", request);
+          ws.current.send(JSON.stringify(request));
+          setIsLoading(true);
+          emptyFileUploadResponse();
+        } else {
+          console.error("WebSocket is not connected.");
+          setError("WebSocket is not connected.");
+        }
       }
     },
-    [legislationUrls, selectedJurisdiction, savedModelId]
+    [messages, legislationUrls, selectedJurisdiction, savedModelId]
   );
 
   return { messages, sendMessage, isConnected, isLoading, error };

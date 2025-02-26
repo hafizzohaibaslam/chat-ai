@@ -25,7 +25,7 @@ import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
 import { SuggestedActions } from "./suggested-actions";
 import equal from "fast-deep-equal";
-import { MessageSquareText, Globe, FileSearch2Icon } from "lucide-react";
+import { MessageSquareText, Globe } from "lucide-react";
 import {
   Tooltip,
   TooltipTrigger,
@@ -33,9 +33,11 @@ import {
   TooltipProvider,
 } from "@/components/ui/tooltip";
 import { LegislationSearchDrawer } from "./MessageInput/LegislationSearchDrawer";
+import { API } from "@/lib/axios";
+import { useChatContext } from "@/context/chatContext";
 
 // -------------------------------------
-// AttachmentPreview Component (unchanged)
+// AttachmentPreview Component
 function AttachmentPreview({
   attachment,
   onRemove,
@@ -79,8 +81,7 @@ function AttachmentPreview({
 }
 
 // -------------------------------------
-// Upload Button Component (unchanged behavior)
-// Note: This one is not wrapped with asChild, so we simply wrap it later.
+// Upload Button Component
 function PureAttachmentsButton({
   fileInputRef,
   isLoading,
@@ -143,6 +144,7 @@ function PureMultimodalInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { width } = useWindowSize();
 
+  const { addFileUploadResponse } = useChatContext();
   useEffect(() => {
     if (textareaRef.current) {
       adjustHeight();
@@ -192,8 +194,8 @@ function PureMultimodalInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadQueue, setUploadQueue] = useState<Array<string>>([]);
 
-  // Read file as Data URL and resolve as an attachment
-  const uploadFile = async (file: File) => {
+  // Create local preview so user sees the file name/image right away
+  const createLocalPreview = async (file: File) => {
     return new Promise<Attachment>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => {
@@ -208,6 +210,75 @@ function PureMultimodalInput({
       };
       reader.readAsDataURL(file);
     });
+  };
+
+  // Actually upload the file(s) to your backend
+  async function uploadToServer(files: File[]) {
+    const formData = new FormData();
+
+    if (files.length === 1) {
+      // Single file => POST /file/process_file
+      formData.append("file", files[0]);
+      const res = await API.post("file/process_file", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+      addFileUploadResponse([res.data]);
+      return res.data;
+    } else {
+      // Multiple files => POST /file/process_files_batch
+      // "files" array in form data
+      files.forEach((file) => {
+        formData.append("files", file);
+      });
+      // Optionally append "batch_size" if needed, e.g. formData.append("batch_size", "3");
+      const res = await API.post("file/process_files_batch", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+      addFileUploadResponse(Object.values(res.data));
+      return res.data;
+    }
+  }
+
+  const handleFileChange = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(event.target.files || []);
+      setUploadQueue(files.map((file) => file.name));
+
+      console.log("handleFileChange -> selected files:", files);
+
+      try {
+        // Step 1: create local previews
+        const previewPromises = files.map((file) => createLocalPreview(file));
+        const localPreviews = await Promise.all(previewPromises);
+
+        // Step 2: add local previews to attachments (UI)
+        setAttachments((current) => [...current, ...localPreviews]);
+
+        // Step 3: upload to server
+        const responseData = await uploadToServer(files);
+        console.log("Batch upload response:", responseData);
+
+        if (files.length === 1) {
+          toast.success(`File uploaded: ${files[0].name}`);
+        } else {
+          toast.success(`All ${files.length} files uploaded successfully!`);
+        }
+      } catch (error) {
+        console.error("Error uploading files!", error);
+        toast.error("Error uploading file(s)!");
+      } finally {
+        setUploadQueue([]);
+      }
+    },
+    [setAttachments]
+  );
+
+  const handleRemoveAttachment = (url: string) => {
+    setAttachments((prev) => prev.filter((att) => att.url !== url));
   };
 
   const submitForm = useCallback(() => {
@@ -233,43 +304,16 @@ function PureMultimodalInput({
     chatId,
   ]);
 
-  const handleFileChange = useCallback(
-    async (event: ChangeEvent<HTMLInputElement>) => {
-      const files = Array.from(event.target.files || []);
-      setUploadQueue(files.map((file) => file.name));
-
-      try {
-        const uploadPromises = files.map((file) => uploadFile(file));
-        const uploadedAttachments = await Promise.all(uploadPromises);
-        const successfullyUploadedAttachments = uploadedAttachments.filter(
-          (attachment) => attachment !== undefined
-        );
-
-        setAttachments((currentAttachments) => [
-          ...currentAttachments,
-          ...successfullyUploadedAttachments,
-        ]);
-      } catch (error) {
-        console.error("Error uploading files!", error);
-      } finally {
-        setUploadQueue([]);
-      }
-    },
-    [setAttachments]
-  );
-
-  const handleRemoveAttachment = (url: string) => {
-    setAttachments((prev) => prev.filter((att) => att.url !== url));
-  };
-
   return (
     <div className="relative w-full flex flex-col gap-4">
+      {/* If no messages, attachments, or queued uploads, show suggested actions */}
       {messages.length === 0 &&
         attachments.length === 0 &&
         uploadQueue.length === 0 && (
           <SuggestedActions append={append} chatId={chatId} />
         )}
 
+      {/* Hidden file input for uploading */}
       <input
         type="file"
         className="fixed -top-4 -left-4 size-0.5 opacity-0 pointer-events-none"
@@ -279,6 +323,7 @@ function PureMultimodalInput({
         tabIndex={-1}
       />
 
+      {/* Show local previews or uploading placeholders */}
       {(attachments.length > 0 || uploadQueue.length > 0) && (
         <div className="flex flex-row gap-2 overflow-x-scroll items-end">
           {attachments.map((attachment) => (
@@ -362,6 +407,7 @@ function PureMultimodalInput({
             </TooltipContent>
           </Tooltip>
 
+          {/* Legislation Search Drawer */}
           <LegislationSearchDrawer />
 
           {/* Internet Search */}
@@ -384,6 +430,7 @@ function PureMultimodalInput({
         </div>
       </TooltipProvider>
 
+      {/* Send / Stop buttons */}
       <div className="absolute bottom-0 right-0 p-2 w-fit flex flex-row justify-end">
         {isLoading ? (
           <StopButton stop={stop} setMessages={setMessages} />

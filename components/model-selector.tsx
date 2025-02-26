@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useMemo, useState } from "react";
+import { startTransition, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -13,8 +13,7 @@ import { ChatModel } from "@/lib/ai/models";
 import { cn } from "@/lib/utils";
 
 import { CheckCircleFillIcon, ChevronDownIcon } from "./icons";
-import { getAccessTokenClient } from "@/utils/supabase/token";
-import API, { createAPI } from "@/lib/axios";
+import { API } from "@/lib/axios";
 
 export function ModelSelector({
   selectedModelId,
@@ -25,37 +24,36 @@ export function ModelSelector({
   const [open, setOpen] = useState(false);
   const [chatModels, setChatModels] = useState<ChatModel[]>([]);
   const [selectedModel, setSelectedModel] = useState<ChatModel | null>(null);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
 
   console.log("selectedModel", selectedModel);
 
-  // Load the selected model from localStorage on component mount
+  // Fetch models on mount
   useEffect(() => {
     async function fetchModels() {
       try {
-        const API = await createAPI();
-
         const res = await API.get<{ models: ChatModel[] }>(
           "chat/available_models"
         );
 
         setChatModels(res.data.models);
 
-        // Retrieve previously selected model from localStorage
         const savedModelId = localStorage.getItem("selectedModelId");
 
-        const initialModel = res.data.models.find(
-          (model) => model.id === (savedModelId || selectedModelId)
-        );
+        const initialModel =
+          res.data.models.find(
+            (model) => model.id === (savedModelId || selectedModelId)
+          ) ||
+          res.data.models[1] || // Default to second model if available
+          res.data.models[0]; // Otherwise, default to the first model
 
-        setSelectedModel(initialModel || res.data.models[0]); // Default to the first model if not found
+        setSelectedModel(initialModel);
       } catch (error) {
         console.error("Error fetching chat models:", error);
       }
     }
 
     fetchModels();
-  }, [selectedModelId]); // Depend on `selectedModelId` so it updates when it changes
+  }, [selectedModelId]);
 
   // Store selected model in localStorage whenever it changes
   useEffect(() => {
@@ -85,8 +83,8 @@ export function ModelSelector({
             onSelect={() => {
               setOpen(false);
               startTransition(() => {
-                setSelectedModel(chatModel); // Update selection
-                localStorage.setItem("selectedModelId", chatModel.id); // Persist selection
+                setSelectedModel(chatModel);
+                localStorage.setItem("selectedModelId", chatModel.id);
               });
             }}
             className={cn(

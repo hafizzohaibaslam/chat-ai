@@ -1,16 +1,19 @@
 "use client";
 
-import { createAPI } from "@/lib/axios";
+import { API } from "@/lib/axios";
 import { useEffect } from "react";
 import { createContext, useContext, useState } from "react";
 
 interface ChatContextType {
   jurisdictions: any[];
   legislation: any[];
-  selectedJurisdiction: string;
-  setSelectedJurisdiction: (jurisdiction: string) => void;
-  selectedLegislation: string;
-  setSelectedLegislation: (legislation: string) => void;
+  selectedJurisdiction: string[];
+  setSelectedJurisdiction: (jurisdiction: string[]) => void;
+  selectedLegislation: string[];
+  setSelectedLegislation: (legislation: string[]) => void;
+  fileUploadResponse: string[];
+  emptyFileUploadResponse: () => void;
+  addFileUploadResponse: (response: string[]) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -30,20 +33,21 @@ export const ChatContextProvider = ({
 }) => {
   const [jurisdictions, setJurisdictions] = useState([]);
   const [legislation, setLegislation] = useState([]);
-  const [selectedJurisdiction, setSelectedJurisdiction] = useState("");
-  const [selectedLegislation, setSelectedLegislation] = useState([]);
+  const [selectedJurisdiction, setSelectedJurisdiction] = useState<string[]>(
+    []
+  );
+  const [selectedLegislation, setSelectedLegislation] = useState<string[]>([]);
+  const [fileUploadResponse, setFileUploadResponse] = useState<string[]>([]);
 
   //let's call the api's here as well
   useEffect(() => {
     async function fetchJurisdictions() {
-      const API = await createAPI();
       const res = await API.get("chat/jurisdictions");
       console.log("jurisdictions", res.data);
       setJurisdictions(res.data);
     }
 
     async function fetchLegislation() {
-      const API = await createAPI();
       const res = await API.get("chat/legislation_sources");
       console.log("legislation", res.data);
       setLegislation(res.data);
@@ -52,6 +56,13 @@ export const ChatContextProvider = ({
     fetchJurisdictions();
     fetchLegislation();
   }, []);
+
+  const addFileUploadResponse = (response: string[]) => {
+    setFileUploadResponse((prev) => [...prev, ...response]);
+  };
+  const emptyFileUploadResponse = () => {
+    setFileUploadResponse([]);
+  };
 
   return (
     <ChatContext.Provider
@@ -62,6 +73,9 @@ export const ChatContextProvider = ({
         setSelectedJurisdiction,
         selectedLegislation,
         setSelectedLegislation,
+        fileUploadResponse,
+        emptyFileUploadResponse,
+        addFileUploadResponse,
       }}
     >
       {children}

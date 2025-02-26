@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -19,9 +19,9 @@ import {
 import { FileSearch2Icon } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import MultiSelectComponent from "@/components/MessageInput/MultiSelect"; // We'll pass data into this
-import { createAPI } from "@/lib/axios";
+import MultiSelectComponent from "@/components/MessageInput/MultiSelect";
 import { useChatContext } from "@/context/chatContext";
+
 export function LegislationSearchDrawer() {
   const {
     legislation,
@@ -31,7 +31,23 @@ export function LegislationSearchDrawer() {
     selectedLegislation,
     setSelectedLegislation,
   } = useChatContext();
-  console.log("jurisdictions", jurisdictions);
+
+  console.log("selectedJurisdictions", selectedJurisdiction);
+  console.log("selectedLegislation", selectedLegislation);
+
+  // Function to toggle jurisdiction selection
+  const handleJurisdictionChange = (
+    jurisdictionId: number,
+    checked: boolean
+  ) => {
+    setSelectedJurisdiction((prev: number[]) => {
+      if (checked) {
+        return [...prev, jurisdictionId]; // Add if checked
+      } else {
+        return prev.filter((id) => id !== jurisdictionId); // Remove if unchecked
+      }
+    });
+  };
 
   return (
     <TooltipProvider>
@@ -71,37 +87,39 @@ export function LegislationSearchDrawer() {
           </SheetHeader>
 
           <div className="p-4 space-y-6">
-            {/* Select Jurisdiction */}
-            <div>
-              <Label className="text-sm font-medium">Select Jurisdiction</Label>
-              <div className="flex items-center space-x-4 mt-2">
-                {jurisdictions?.jurisdictions?.map(
-                  (jurisdiction: { id: number; name: string }) => {
-                    // "jurisdiction.id" is numeric: 1 for WA, 2 for CTH, etc.
-                    return (
-                      <div
-                        key={jurisdiction.id}
-                        className="flex items-center space-x-2"
-                      >
-                        <Checkbox
-                          id={`jurisdiction-${jurisdiction.id}`}
-                          checked={selectedJurisdiction === jurisdiction.id}
-                          onCheckedChange={(checked: boolean) => {
-                            // If checked, store the ID; if unchecked, store null
-                            setSelectedJurisdiction(
-                              checked ? jurisdiction.id : null
-                            );
-                          }}
-                        />
-                        <Label htmlFor={`jurisdiction-${jurisdiction.id}`}>
-                          {jurisdiction.name}
-                        </Label>
-                      </div>
-                    );
-                  }
-                )}
+            {/* Select Jurisdiction (Hidden if legislation is selected) */}
+            {!selectedLegislation.length && (
+              <div>
+                <Label className="text-sm font-medium">
+                  Select Jurisdiction
+                </Label>
+                <div className="flex items-center space-x-4 mt-2">
+                  {jurisdictions?.jurisdictions?.map(
+                    (jurisdiction: { id: number; name: string }) => {
+                      return (
+                        <div
+                          key={jurisdiction.id}
+                          className="flex items-center space-x-2"
+                        >
+                          <Checkbox
+                            id={`jurisdiction-${jurisdiction.id}`}
+                            checked={selectedJurisdiction.includes(
+                              jurisdiction.id
+                            )}
+                            onCheckedChange={(checked: boolean) =>
+                              handleJurisdictionChange(jurisdiction.id, checked)
+                            }
+                          />
+                          <Label htmlFor={`jurisdiction-${jurisdiction.id}`}>
+                            {jurisdiction.name}
+                          </Label>
+                        </div>
+                      );
+                    }
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Multi-select for Legislation */}
             <div>

@@ -1,15 +1,19 @@
 import axios from "axios";
 import { getAccessTokenClient } from "@/utils/supabase/token";
 
-export async function createAPI() {
-  // Wait for the token
-  const token = await getAccessTokenClient();
+export const API = axios.create({
+  baseURL: "https://law-captain-backend.onrender.com/api/v1/",
+});
 
-  // Return a new Axios instance with the token
-  return axios.create({
-    baseURL: "https://law-captain-backend.onrender.com/api/v1/",
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-}
+API.interceptors.request.use(
+  async (config) => {
+    const token = await getAccessTokenClient();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
